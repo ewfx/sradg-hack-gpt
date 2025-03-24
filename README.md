@@ -42,19 +42,22 @@ Describe the major technical or non-technical challenges your team encountered.
    ```
 2. Install dependencies  
    ```sh
-   npm install  # or pip install -r requirements.txt (for Python)
+   pip install -r requirements.txt
    ```
 3. Run the project  
    ```sh
-   npm start  # or python app.py
+   python app.py
    ```
 
 ## 🏗️ Tech Stack
-- 🔹 Frontend: React / Vue / Angular
-- 🔹 Backend: Node.js / FastAPI / Django
-- 🔹 Database: PostgreSQL / Firebase
-- 🔹 Other: OpenAI API / Twilio / Stripe
+- 🔹 Frontend: Streamlit, Gradio
+- 🔹 Backend: FastAPI, Flask
+- 🔹 LLM: Llama, Gemini
+- 🔹 Frameworks: AutoML, LangChain
+<!-- - 🔹 Database: PostgreSQL / Firebase -->
 
 ## 👥 Team
-- **Your Name** - [GitHub](#) | [LinkedIn](#)
-- **Teammate 2** - [GitHub](#) | [LinkedIn](#)
+- **Praveen Kumar R** - [GitHub](https://github.com/praveen-221) | [Website](https://praveenkr.vercel.app/)
+- **Kirthi Vignesh G** - [GitHub](#) | [LinkedIn](#)
+- **Shubham M Prabhu** - [GitHub](#) | [LinkedIn](#)
+- **Mohammed Zaid Ali Syed** - [GitHub](#) | [LinkedIn](#)
