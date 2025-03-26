@@ -169,8 +169,6 @@ def show_analysis_results(result, index):
         anomalies = result.get('llm_analysis', {}).get('anomalies', [])
         if anomalies:
             st.write("**Comments:**", anomalies[0].get('reasoning', 'No comments available'))
-        else:
-            st.write("**Comments:**", "No anomalies detected")
             
         st.write("**Impact:**", result.get('fix_suggestion', {}).get('risk_assessment', 'No impact assessment available'))
     

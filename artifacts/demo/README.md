@@ -1,5 +1,14 @@
-Replace this file with files that you would like to use for your demo. This may include
+## ReconcileX UI
 
-- A presentation/deck in pdf or pptx format
-- A demo video (screen capture) in mp4 or other popular video formats
-- Any other document describing your solution (in pdf or md format)
+### Dashboard
+- The shows the data that needs to be reconciled and metrics about the data for insights
+
+![Dashboard](images/dashboard.png)
+
+![Metrics](images/metrics.png)
+
+### GenAI based Anomaly Detection & Fix suggestion
+![Anomaly Detection](images/anomaly_detection.png)
+
+### Fix Execution using Langchain
+![LangChain Fix Execution](images/langchain_fix_execution.png)

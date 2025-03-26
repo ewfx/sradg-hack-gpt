@@ -22,7 +22,7 @@
 📹 [Video Demo](#) (if applicable)  
 🖼️ Screenshots:
 
-![Screenshot 1](link-to-image)
+![Dashboard](artifacts/demo/images/dashboard.png)
 
 ## 💡 Inspiration
 The traditional reconciliation process in FinTech industry have the following painpoints for reconcilers and hinders the business from operating efficiently:  
@@ -33,11 +33,11 @@ The traditional reconciliation process in FinTech industry have the following pa
 To resolve the above mentioned painpoints and to improve efficiency, the industry needs a smart reconciliation tool—one that detects anomalies, suggests fixes, and reduces human intervention. That's exactly what this system does.
 
 ## ⚙️ What It Does
-✅ Automates Break Resolution - Uses LLMs (Llama/Mistral) to suggest fixes for reconciliation breaks.  
-✅ Real-Time Anomaly Detection - Combines Autoencoder, LSTM, and Isolation Forest to flag transactions along with precise summaries of the anomaly using LLM.  
-✅ Human-in-the-Loop Review - Operators can approve/reject AI-generated resolutions with feedback loops to improve accuray.  
-✅ Simulates External Systems - Mocks responses from JIRA, mail, and trade systems for end-to-end automation testing.  
-✅ Interactive UI - A dashboard for reconcilers to review anomalies, understand root causes, and apply fixes effortlessly and autonomously.
+✅ **Automates Break Resolution** - Uses LLMs (Llama/Mistral) to suggest fixes for reconciliation breaks.  
+✅ **Real-Time Anomaly Detection** - Combines Autoencoder, LSTM, and Isolation Forest to flag transactions along with precise summaries of the anomaly using LLM.  
+✅ **Human-in-the-Loop Review** - Operators can approve/reject AI-generated resolutions with feedback loops to improve accuray.  
+✅ **Simulates External Systems** - Mocks responses from JIRA, mail, and trade systems for end-to-end automation testing.  
+✅ **Interactive UI** - A dashboard for reconcilers to review anomalies, understand root causes, and apply fixes effortlessly and autonomously.
 
 ## 🛠️ How We Built It
 🚀 Frontend (User Interface):
