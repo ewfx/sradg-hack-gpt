@@ -94,6 +94,6 @@ To resolve the above mentioned painpoints and to improve efficiency, the industr
 
 ## 👥 Team HackGPT
 - **Praveen Kumar R** - [GitHub](https://github.com/praveen-221) | [Website](https://praveenkr.vercel.app/)
-- **Kirthi Vignesh G** - [GitHub](#) | [LinkedIn](#)
-- **Shubham M Prabhu** - [GitHub](#) | [LinkedIn](#)
-- **Mohammed Zaid Ali Syed** - [GitHub](#) | [LinkedIn](#)
+- **Kirthi Vignesh G** - [GitHub](https://github.com/KirthiVignesh) | [Website](https://kirthi.vercel.app/)
+- **Shubham M Prabhu** - [GitHub](https://github.com/shubhamprabhu10)
+- **Mohammed Zaid Ali Syed** - [GitHub](https://github.com/zayd110)
