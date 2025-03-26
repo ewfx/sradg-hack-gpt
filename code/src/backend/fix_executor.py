@@ -1,8 +1,8 @@
 from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import StringPromptTemplate
+from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from langchain.llms import LlamaCpp
+from langchain_community.llms import LlamaCpp
 from typing import Dict, Any, List
 import requests
 import json
@@ -58,7 +58,6 @@ class FixExecutorTools:
 class FixExecutor:
     def __init__(self):
         # Initialize LLM
-        # Download model if not already present
         MODEL_PATH = os.getenv("MODEL_PATH")
         MODEL_URL = os.getenv("MODEL_URL")
         
@@ -74,11 +73,46 @@ class FixExecutor:
         self.llm = LlamaCpp(
             model_path=MODEL_PATH,
             temperature=0.1,
-            n_ctx=16384,
             max_tokens=2048,
+            n_ctx=16384,
             n_threads=4,
             n_batch=512,
             verbose=False
+        )
+
+        # Initialize fix suggestion prompt
+        self.fix_prompt = PromptTemplate(
+            input_variables=["record", "difference", "gl_balance", "ihub_balance"],
+            template="""SYSTEM: You are a financial reconciliation expert. Analyze the record and suggest appropriate fix action.
+
+INPUT DATA:
+Record: {record}
+Difference: {difference}
+GL Balance: {gl_balance}
+IHub Balance: {ihub_balance}
+
+INSTRUCTIONS:
+1. Analyze the record for anomalies
+2. Determine appropriate fix action
+3. Return ONLY a valid JSON object in the following format:
+
+{{
+    "action_type": "email_notification|jira_ticket|system_update",
+    "priority": "high|medium|low",
+    "description": "detailed explanation",
+    "implementation": {{
+        "tool": "which tool to use",
+        "params": {{
+            "param1": "value1",
+            "param2": "value2"
+        }}
+    }}
+}}
+
+REQUIREMENTS:
+- Use ONLY double quotes for JSON properties and values
+- Do not include any text outside the JSON object
+- No markdown or code block markers"""
         )
 
         # Initialize tools
@@ -103,81 +137,133 @@ class FixExecutor:
         # Initialize memory
         self.memory = ConversationBufferMemory(memory_key="chat_history")
 
-    def _determine_fix_strategy(self, record: Dict[str, Any], anomaly_result: str) -> List[str]:
-        """Determines the sequence of actions needed to fix the issue"""
-        prompt = f"""
-        Analyze the following reconciliation record and anomaly:
-        Record: {json.dumps(record)}
-        Anomaly: {anomaly_result}
+    def _clean_llm_response(self, response: str) -> Dict[str, Any]:
+        """Clean and parse LLM response to ensure valid JSON"""
+        try:
+            # Remove any markdown code block markers
+            response = response.replace("```json", "").replace("```", "").strip()
+            
+            # Find the first { and last }
+            start_idx = response.find('{')
+            end_idx = response.rfind('}') + 1
+            
+            if start_idx == -1 or end_idx == 0:
+                raise ValueError("No JSON object found in response")
+            
+            # Extract just the JSON part
+            json_str = response[start_idx:end_idx]
+            
+            # Replace single quotes with double quotes
+            json_str = json_str.replace("'", '"')
+            
+            # Handle common JSON formatting issues
+            json_str = json_str.replace("None", "null")
+            json_str = json_str.replace("True", "true")
+            json_str = json_str.replace("False", "false")
+            
+            # Validate JSON by parsing
+            parsed = json.loads(json_str)
+            
+            # Ensure required structure
+            if "action_type" not in parsed:
+                parsed["action_type"] = "jira_ticket"
+            if "priority" not in parsed:
+                parsed["priority"] = "medium"
+            if "description" not in parsed:
+                parsed["description"] = "No description provided"
+            if "implementation" not in parsed:
+                parsed["implementation"] = {
+                    "tool": "create_jira_ticket",
+                    "params": {
+                        "summary": "Manual Investigation Required",
+                        "description": "System failed to determine specific fix"
+                    }
+                }
+            
+            return parsed
+            
+        except Exception as e:
+            logger.error(f"Error cleaning response: {str(e)}\nOriginal response: {response}")
+            return self._get_default_fix_action({})
 
-        Determine the necessary steps to resolve this issue. Consider:
-        1. Which source systems need updates
-        2. Whether stakeholder notification is needed
-        3. If a JIRA ticket should be created for tracking
+    def _determine_fix_action(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Determines the appropriate fix action based on the record"""
+        try:
+            # Extract relevant values
+            gl_balance = float(record.get('GL_Balance', 0))
+            ihub_balance = float(record.get('Ihub_Balance', 0))
+            difference = abs(gl_balance - ihub_balance)
 
-        Return the list of required actions.
-        """
-        
-        response = self.llm(prompt)
-        # Parse response to get action steps
-        actions = [step.strip() for step in response.split('\n') if step.strip()]
-        return actions
+            # Get fix suggestion from LLM
+            prompt_input = {
+                "record": json.dumps(record, indent=2),
+                "difference": difference,
+                "gl_balance": gl_balance,
+                "ihub_balance": ihub_balance
+            }
+            
+            response = self.llm.invoke(self.fix_prompt.format(**prompt_input))
+            logger.info(f"Raw LLM response: {response}")
+            
+            # Clean and parse the response
+            fix_action = self._clean_llm_response(response)
+            logger.info(f"Determined fix action: {fix_action}")
+            return fix_action
+            
+        except Exception as e:
+            logger.error(f"Error determining fix action: {e}")
+            return self._get_default_fix_action(record)
 
-    def execute_fix(self, record: Dict[str, Any], anomaly_result: str = None) -> Dict[str, Any]:
-        """
-        Executes the fix using agentic approach
-        """
+    def _get_default_fix_action(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Provides a default fix action when LLM fails"""
+        return {
+            "action_type": "jira_ticket",
+            "priority": "medium",
+            "description": "System failed to determine specific fix. Manual investigation required.",
+            "implementation": {
+                "tool": "create_jira_ticket",
+                "params": {
+                    "summary": f"Manual Investigation Required - {record.get('Account', 'Unknown')}",
+                    "description": f"Failed to determine automated fix for record: {json.dumps(record, indent=2)}"
+                }
+            }
+        }
+
+    def execute_fix(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Executes the fix using agentic approach"""
         logger.info(f"Starting fix execution for record: {record}")
         
         try:
-            # Determine fix strategy
-            fix_actions = self._determine_fix_strategy(record, anomaly_result)
-            execution_results = []
+            # Determine fix action
+            fix_action = self._determine_fix_action(record)
+            
+            # Execute the determined action
+            if fix_action["action_type"] == "email_notification":
+                result = FixExecutorTools.send_email_notification(
+                    recipient=f"{record.get('Primary_Account', 'unknown').lower()}_team@company.com",
+                    subject=f"Missing Balance Alert - {record.get('Account', 'Unknown')}",
+                    body=f"Missing balance detected in reconciliation:\n\n{json.dumps(record, indent=2)}"
+                )
+            elif fix_action["action_type"] == "jira_ticket":
+                result = FixExecutorTools.create_jira_ticket(
+                    summary=fix_action["implementation"]["params"]["summary"],
+                    description=fix_action["implementation"]["params"]["description"]
+                )
+            elif fix_action["action_type"] == "system_update":
+                result = FixExecutorTools.update_source_system(
+                    record=record,
+                    system_name="ihub" if record.get('GL_Balance', 0) != 0 else "gl"
+                )
+            else:
+                result = self._get_default_fix_action(record)
 
-            for action in fix_actions:
-                if "update" in action.lower():
-                    # Execute source system updates
-                    for system in ["source1", "source2"]:
-                        result = FixExecutorTools.update_source_system(record, system)
-                        execution_results.append({
-                            "action": f"update_{system}",
-                            "result": result
-                        })
-
-                if "jira" in action.lower():
-                    # Create JIRA ticket
-                    ticket_result = FixExecutorTools.create_jira_ticket(
-                        summary=f"Reconciliation Fix for {record.get('Transaction ID', 'Unknown')}",
-                        description=f"Automated fix executed for record:\n{json.dumps(record, indent=2)}\n\nAnomaly: {anomaly_result}"
-                    )
-                    execution_results.append({
-                        "action": "create_jira_ticket",
-                        "result": ticket_result
-                    })
-
-                if "email" in action.lower() or "notify" in action.lower():
-                    # Send notification
-                    email_result = FixExecutorTools.send_email_notification(
-                        recipient="stakeholder@company.com",
-                        subject=f"Reconciliation Fix Executed - {record.get('Transaction ID', 'Unknown')}",
-                        body=f"Automated fix has been executed for the following record:\n\n{json.dumps(record, indent=2)}"
-                    )
-                    execution_results.append({
-                        "action": "send_notification",
-                        "result": email_result
-                    })
-
-            # Compile execution summary
-            summary = {
+            return {
                 "status": "success",
-                "record_id": record.get("Transaction ID", "Unknown"),
-                "actions_executed": len(execution_results),
-                "execution_details": execution_results,
+                "action_taken": fix_action["action_type"],
+                "priority": fix_action["priority"],
+                "result": result,
                 "timestamp": datetime.now().isoformat()
             }
-
-            logger.info(f"Fix execution completed successfully: {summary}")
-            return summary
 
         except Exception as e:
             error_msg = f"Error executing fix: {str(e)}"
@@ -185,13 +271,11 @@ class FixExecutor:
             return {
                 "status": "error",
                 "message": error_msg,
-                "record_id": record.get("Transaction ID", "Unknown"),
+                "record_id": record.get("Account", "Unknown"),
                 "timestamp": datetime.now().isoformat()
             }
 
 def execute_fix(record: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Main entry point for fix execution
-    """
+    """Main entry point for fix execution"""
     executor = FixExecutor()
     return executor.execute_fix(record)

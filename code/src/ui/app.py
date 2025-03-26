@@ -17,6 +17,16 @@ st.set_page_config(
     }
 )
 
+# Add custom CSS for light theme
+st.markdown("""
+<style>
+    .stApp {
+        background-color: white;
+        color: black;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 logger = logging.getLogger(__name__)
 
 def initialize_session_state():
@@ -143,17 +153,32 @@ def approve_fix(record: dict, feedback: str, index: int):
         st.error(f"Error approving fix: {str(e)}")
         return None
 
-def show_analysis_results(result):
+def show_analysis_results(result, index):
     """Display analysis results in a structured format"""
-    col1, col2 = st.columns(2)
+    # Remove the detect anomaly button after results are shown
+    st.empty()  # Clear the previous button
     
-    with col1:
+    # Create containers for different sections
+    anomaly_container = st.container()
+    fix_container = st.container()
+    action_container = st.container()
+    
+    # Anomaly Detection Section
+    with anomaly_container:
         st.subheader("Anomaly Detection")
-        st.write("**Status:**", "Yes" if result.get('final_assessment', {}).get('is_anomaly', True) else "No")
-        st.write("**Comments:**", result.get('llm_analysis', {}).get('overall_assessment', 'No comments available'))
+        st.write("**Anomaly Detected:**", "Yes" if result.get('final_assessment', {}).get('is_anomaly', True) else "No")
+        
+        # Safely get the first anomaly's reasoning if available
+        anomalies = result.get('llm_analysis', {}).get('anomalies', [])
+        if anomalies:
+            st.write("**Comments:**", anomalies[0].get('reasoning', 'No comments available'))
+        else:
+            st.write("**Comments:**", "No anomalies detected")
+            
         st.write("**Impact:**", result.get('fix_suggestion', {}).get('risk_assessment', 'No impact assessment available'))
     
-    with col2:
+    # Fix Details Section
+    with fix_container:
         st.subheader("Fix Details")
         st.write("**Cause:**", result.get('fix_suggestion', {}).get('root_cause', 'No cause identified'))
         st.write("**Fix Suggestion:**", result.get('fix_suggestion', {}).get('recommended_fix', 'No fix suggested'))
@@ -161,6 +186,85 @@ def show_analysis_results(result):
         steps = result.get('fix_suggestion', {}).get('implementation_steps', ['No steps available'])
         for step in steps:
             st.write(f"- {step}")
+    
+    # Fix Action Section
+    with action_container:
+        st.subheader("Fix Actions")
+        feedback = st.text_area("Feedback (optional):", key=f"feedback_{index}")
+        
+        # Create a row for buttons using a container
+        button_container = st.container()
+        with button_container:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("✅ Approve Fix", key=f"approve_{index}", type="primary"):
+                    with st.spinner("Executing fix..."):
+                        fix_result = approve_fix(result.get('record', {}), feedback, index)
+                        if fix_result:
+                            st.success("Fix executed successfully!")
+                            # Show simulation interface
+                            show_fix_simulation(fix_result, result)
+            
+            with col2:
+                if st.button("❌ Reject Fix", key=f"reject_{index}", type="secondary"):
+                    st.warning("Fix rejected")
+                    # Log the rejection with feedback
+                    logger.info(f"Fix rejected for record {index} with feedback: {feedback}")
+
+def show_fix_simulation(fix_result, original_result):
+    """Display simulation of fix execution in external systems"""
+    st.subheader("Fix Execution Simulation")
+    
+    # Create tabs for different systems
+    system_tabs = st.tabs(["Source System 1", "Source System 2", "JIRA Ticket", "Email Notification"])
+    
+    with system_tabs[0]:
+        st.write("**Source System 1 Update**")
+        st.info("Simulating update in primary system...")
+        # Show simulated changes using containers
+        before_container = st.container()
+        after_container = st.container()
+        
+        with before_container:
+            st.write("**Before Fix:**")
+            st.json(original_result.get('record', {}))
+            
+        with after_container:
+            st.write("**After Fix:**")
+            st.json(fix_result.get('result', {}).get('updated_record', {}))
+    
+    with system_tabs[1]:
+        st.write("**Source System 2 Update**")
+        st.info("Synchronizing with secondary system...")
+        # Show sync status
+        st.success("✓ Changes synchronized successfully")
+        
+    with system_tabs[2]:
+        st.write("**JIRA Ticket**")
+        ticket_info = {
+            "Ticket ID": f"RECON-{hash(str(original_result)) % 1000}",
+            "Status": "Resolved",
+            "Summary": "Reconciliation Fix Implementation",
+            "Description": original_result.get('fix_suggestion', {}).get('recommended_fix', ''),
+            "Resolution": "Fix applied successfully"
+        }
+        st.json(ticket_info)
+        
+    with system_tabs[3]:
+        st.write("**Email Notification**")
+        email_preview = {
+            "To": "stakeholders@company.com",
+            "Subject": f"Reconciliation Fix Completed - {ticket_info['Ticket ID']}",
+            "Body": f"""Fix has been successfully implemented.
+            
+Original Issue: {original_result.get('fix_suggestion', {}).get('root_cause', '')}
+Resolution: {original_result.get('fix_suggestion', {}).get('recommended_fix', '')}
+Status: Completed
+            
+Please review the changes and confirm."""
+        }
+        st.json(email_preview)
 
 def calculate_column_differences(df, key_columns):
     """Calculate differences between numeric columns"""
@@ -192,7 +296,6 @@ def show_dashboard():
     )
 
     if uploaded_file:
-        # Read and store data
         try:
             df = pd.read_excel(uploaded_file) if uploaded_file.name.endswith(('xlsx', 'xls')) else pd.read_csv(uploaded_file)
             st.session_state.uploaded_data = df
@@ -200,71 +303,9 @@ def show_dashboard():
             st.error(f"Error reading file: {str(e)}")
             return
 
-        # Calculate summary metrics
-        total_records = len(df)
-        processed_records = len(st.session_state.anomaly_results)
-        pending_records = total_records - processed_records
-
-        # Calculate column differences
-        key_columns = st.session_state.process_config["key_columns"]
-        column_differences = calculate_column_differences(df, key_columns)
-
-        # Display summary metrics in two rows
-        st.subheader("Summary Metrics")
-        
-        # First row: Record counts
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Records", total_records)
-        with col2:
-            st.metric("Pending Review", pending_records)
-        with col3:
-            st.metric("Processed", processed_records)
-        
-        # Second row: Column differences
-        if column_differences:
-            st.write("**Column Comparisons**")
-            cols = st.columns(len(column_differences))
-            for idx, (comparison, data) in enumerate(column_differences.items()):
-                with cols[idx]:
-                    col1, col2 = comparison.split('_vs_')
-                    st.metric(
-                        f"{col1} vs {col2}",
-                        f"{data['difference']:.2f}%",
-                        f"{data['sum1']:,.2f} vs {data['sum2']:,.2f}"
-                    )
-
-        # Create a status column for tracking anomaly detection and fixes
-        df['Status'] = 'Pending'
-        df['Anomaly Detected'] = ''
-        
-        # Display the main table
-        st.subheader("Records Table")
-        
-        # Convert DataFrame to display format
-        display_df = df.copy()
-        
-        # Create the main table view
-        with st.container():
-            # Display the dataframe with custom styling
-            st.dataframe(
-                display_df,
-                hide_index=False,
-                column_config={
-                    "Status": st.column_config.Column(
-                        "Status",
-                        width="small"
-                    ),
-                    "Anomaly Detected": st.column_config.Column(
-                        "Anomaly Detected",
-                        width="small"
-                    )
-                }
-            )
-
         # Add a download button for the updated data at the top
         if st.button("Download Updated Data"):
-            csv = display_df.to_csv(index=False)
+            csv = df.to_csv(index=False)
             st.download_button(
                 label="Download CSV",
                 data=csv,
@@ -272,52 +313,62 @@ def show_dashboard():
                 mime="text/csv"
             )
 
-        # Add button for bulk anomaly detection
-        if st.button("Detect Anomalies for All Records"):
+        # Calculate metrics and show summary
+        total_records = len(df)
+        processed_records = len(st.session_state.anomaly_results)
+        pending_records = total_records - processed_records
+
+        # Display summary metrics
+        st.subheader("Summary Metrics")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Records", total_records)
+        with col2:
+            st.metric("Pending Review", pending_records)
+        with col3:
+            st.metric("Processed", processed_records)
+
+        # Calculate and show column differences
+        key_columns = st.session_state.process_config["key_columns"]
+        column_differences = calculate_column_differences(df, key_columns)
+        if column_differences:
+            st.write("**Balance Comparisons**")
+            cols = st.columns(len(column_differences))
+            for idx, (comparison, data) in enumerate(column_differences.items()):
+                with cols[idx]:
+                    col1, col2 = comparison.split('_vs_')
+                    st.metric(
+                        f"{col1} vs {col2}",
+                        f"{data['difference']:.2f}%",
+                        f"Diff: {abs(data['sum1'] - data['sum2']):,.2f}"
+                    )
+
+        # Add bulk processing button
+        if st.button("Process All Records"):
             with st.spinner("Processing all records..."):
                 for index, row in df.iterrows():
                     if index not in st.session_state.anomaly_results:
                         result = detect_anomalies(row.to_dict(), index)
                         if result:
-                            display_df.at[index, 'Status'] = 'Analyzed'
-                            display_df.at[index, 'Anomaly Detected'] = 'Yes' if result.get('final_assessment', {}).get('is_anomaly', False) else 'No'
-                st.success("Bulk anomaly detection complete!")
+                            df.at[index, 'Status'] = 'Analyzed'
+                            df.at[index, 'Anomaly Detected'] = 'Yes' if result.get('final_assessment', {}).get('is_anomaly', True) else 'No'
+                    else:
+                        show_analysis_results(st.session_state.anomaly_results[index], index)
+                st.success("Bulk processing complete!")
 
-        # Action buttons and details below the table
-        st.subheader("Record Details and Actions")
+        # Display records table
+        st.subheader("Records")
         for index, row in df.iterrows():
-            with st.expander(f"Record {index + 1}: {' | '.join([f'{col}: {row[col]}' for col in st.session_state.process_config['key_columns']])}"):
-                col1, col2, col3 = st.columns(3)
-                
-                # Anomaly detection button
-                with col1:
+            with st.expander(f"Record {index + 1}: {' | '.join([f'{col}: {row[col]}' for col in key_columns])}"):
+                if index not in st.session_state.anomaly_results:
                     if st.button("Detect Anomaly", key=f"detect_{index}"):
-                        with st.spinner("Detecting anomalies and resolutions..."):
+                        with st.spinner("Analyzing..."):
                             result = detect_anomalies(row.to_dict(), index)
                             if result:
-                                st.success("Analysis complete")
-                                display_df.at[index, 'Status'] = 'Analyzed'
-                                display_df.at[index, 'Anomaly Detected'] = 'Yes' if result.get('final_assessment', {}).get('is_anomaly', True) else 'No'
-                
-                # View results button
-                with col2:
-                    if index in st.session_state.anomaly_results:
-                        if st.button("View Analysis", key=f"view_{index}"):
-                            result = st.session_state.anomaly_results[index]
-                            show_analysis_results(result)
-                
-                # Fix approval section
-                with col3:
-                    if index in st.session_state.anomaly_results:
-                        if st.button("Approve Fix", key=f"approve_{index}"):
-                            feedback = st.text_area("Provide feedback (optional):", key=f"feedback_{index}")
-                            if st.button("Confirm Approval", key=f"confirm_{index}"):
-                                with st.spinner("Executing fix..."):
-                                    fix_result = approve_fix(row.to_dict(), feedback, index)
-                                    if fix_result:
-                                        st.success("Fix executed successfully")
-                                        display_df.at[index, 'Status'] = 'Fixed'
-                                        st.json(fix_result)
+                                df.at[index, 'Status'] = 'Analyzed'
+                                show_analysis_results(result, index)
+                else:
+                    show_analysis_results(st.session_state.anomaly_results[index], index)
 
 def main():
     st.title("AI Agent Powered Reconciliation")
@@ -336,7 +387,7 @@ if __name__ == "__main__":
     main()
 
 
-"""
-:Anomaly result: {'statistical_analysis': {'score': 1.0, 'is_anomaly': False}, 'llm_analysis': {'anomalies': [{'type': 'Break', 'confidence': '0.95', 'reasoning': 'The GL_Balance is not equal to the Ihub_Balance, indicating a discrepancy in the records.', 'impact': 'This could lead 
-to incorrect financial reporting and decision making.'}], 'overall_assessment': 'There is a significant anomaly detected in the record. The GL_Balance does not match the Ihub_Balance, indicating a potential discrepancy in the records. Further investigation is recommended to resolve this issue.'}, 'final_assessment': {'is_anomaly': True, 'confidence_score': 0.22499999999999998, 'timestamp': '2025-03-26T12:13:39.221397'}}, Fix suggestion: {'root_cause': 'The GL_Balance does not match the Ihub_Balance, indicating a potential discrepancy in the records.', 'recommended_fix': 'Review and reconcile the GL_Balance and Ihub_Balance to ensure accuracy.', 'implementation_steps': ['Verify that all transactions have been recorded correctly in both systems.', 'Check for any manual entries or adjustments that may have caused the discrepancy.', 'Contact the relevant parties to obtain additional information or clarification if necessary.'], 'risk_assessment': "The potential risk associated with this issue is significant, as it could lead to incorrect financial reporting and decision making. It is important to address this issue promptly to minimize any negative impact on the organization's finances."}
-"""
+#"""
+#:Anomaly result: {'statistical_analysis': {'score': 1.0, 'is_anomaly': False}, 'llm_analysis': {'anomalies': [{'type': 'Break', 'confidence': '0.95', 'reasoning': 'The GL_Balance is not equal to the Ihub_Balance, indicating a discrepancy in the records.', 'impact': 'This could lead 
+#to incorrect financial reporting and decision making.'}], 'overall_assessment': 'There is a significant anomaly detected in the record. The GL_Balance does not match the Ihub_Balance, indicating a potential discrepancy in the records. Further investigation is recommended to resolve this issue.'}, 'final_assessment': {'is_anomaly': True, 'confidence_score': 0.22499999999999998, 'timestamp': '2025-03-26T12:13:39.221397'}}, Fix suggestion: {'root_cause': 'The GL_Balance does not match the Ihub_Balance, indicating a potential discrepancy in the records.', 'recommended_fix': 'Review and reconcile the GL_Balance and Ihub_Balance to ensure accuracy.', 'implementation_steps': ['Verify that all transactions have been recorded correctly in both systems.', 'Check for any manual entries or adjustments that may have caused the discrepancy.', 'Contact the relevant parties to obtain additional information or clarification if necessary.'], 'risk_assessment': "The potential risk associated with this issue is significant, as it could lead to incorrect financial reporting and decision making. It is important to address this issue promptly to minimize any negative impact on the organization's finances."}
+#"""

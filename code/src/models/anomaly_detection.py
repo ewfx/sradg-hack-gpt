@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 
 class AnomalyDetector:
     def __init__(self):
-       # Initialize LLM
-        # Download model if not already present
+        # Initialize LLM
         MODEL_PATH = os.getenv("MODEL_PATH")
         MODEL_URL = os.getenv("MODEL_URL")
         
@@ -48,27 +47,38 @@ class AnomalyDetector:
             random_state=42
         )
         
-        # Define reasoning prompt
+        # Define reasoning prompt with explicit JSON formatting
         self.reasoning_prompt = PromptTemplate(
             input_variables=["record", "statistical_score", "break_categories", "key_columns"],
-            template="""Analyze record for anomalies:
-Record: {record}
-Score: {statistical_score}
-Categories: {break_categories}
-Columns: {key_columns}
+            template="""SYSTEM: You are a financial reconciliation anomaly detector. Analyze the given record and provide your assessment in a structured JSON format.
 
-Provide JSON response:
+INPUT DATA:
+Record: {record}
+Statistical Score: {statistical_score}
+Break Categories: {break_categories}
+Key Columns: {key_columns}
+
+INSTRUCTIONS:
+1. Analyze the record for anomalies
+2. Determine reasoning
+3. Return ONLY a valid JSON object in the following format:
+
 {{
     "anomalies": [
         {{
-            "type": "type",
+            "type": "specific_anomaly_type",
             "confidence": "0.XX",
-            "reasoning": "brief explanation",
-            "impact": "impact"
+            "reasoning": "clear explanation of the anomaly"
         }}
     ],
-    "overall_assessment": "brief summary"
-}}"""
+    "overall_assessment": "brief summary of findings"
+}}
+
+REQUIREMENTS:
+- Use ONLY double quotes for JSON properties and values
+- Provide specific, actionable reasoning
+- Do not include any text outside the JSON object
+- No markdown or code block markers"""
         )
         
         # Create the runnable chain
@@ -77,6 +87,54 @@ Provide JSON response:
             | self.llm 
             | StrOutputParser()
         )
+
+    def _clean_llm_response(self, response: str) -> Dict[str, Any]:
+        """Clean and parse LLM response to ensure valid JSON"""
+        try:
+            # Remove any markdown code block markers
+            response = response.replace("```json", "").replace("```", "").strip()
+            
+            # Find the first { and last }
+            start_idx = response.find('{')
+            end_idx = response.rfind('}') + 1
+            
+            if start_idx == -1 or end_idx == 0:
+                raise ValueError("No JSON object found in response")
+            
+            # Extract just the JSON part
+            json_str = response[start_idx:end_idx]
+            
+            # Replace single quotes with double quotes
+            json_str = json_str.replace("'", '"')
+            
+            # Handle common JSON formatting issues
+            json_str = json_str.replace("None", "null")
+            json_str = json_str.replace("True", "true")
+            json_str = json_str.replace("False", "false")
+            
+            # Validate JSON by parsing
+            parsed = json.loads(json_str)
+            
+            # Ensure required structure
+            if "anomalies" not in parsed or not isinstance(parsed["anomalies"], list):
+                parsed["anomalies"] = []
+            if "overall_assessment" not in parsed:
+                parsed["overall_assessment"] = "No assessment provided"
+            
+            return parsed
+            
+        except Exception as e:
+            logger.error(f"Error cleaning response: {str(e)}\nOriginal response: {response}")
+            # Return a default structure if parsing fails
+            return {
+                "anomalies": [{
+                    "type": "parsing_error",
+                    "confidence": "1.0",
+                    "reasoning": f"Failed to parse LLM response: {str(e)}",
+                    "impact": "Unable to determine impact due to parsing error"
+                }],
+                "overall_assessment": "Error in analysis"
+            }
 
     def _prepare_numerical_features(self, record: Dict[str, Any]) -> np.ndarray:
         """Extract and normalize numerical features from record"""
@@ -118,38 +176,12 @@ Provide JSON response:
                 "key_columns": json.dumps(key_columns)  # Convert to JSON string
             }
             
-            # Updated LLM analysis with better error handling
-            try:
-                llm_analysis = self.chain.invoke(reasoning_input)
-                # Clean up the response to ensure valid JSON
-                cleaned_response = llm_analysis.strip()
-                if not cleaned_response.startswith('{'):
-                    # Extract JSON if it's wrapped in other text
-                    start_idx = cleaned_response.find('{')
-                    end_idx = cleaned_response.rfind('}') + 1
-                    if start_idx != -1 and end_idx != 0:
-                        cleaned_response = cleaned_response[start_idx:end_idx]
-                
-                llm_result = json.loads(cleaned_response)
-                
-                # Ensure required fields exist
-                if "anomalies" not in llm_result:
-                    llm_result["anomalies"] = []
-                if "overall_assessment" not in llm_result:
-                    llm_result["overall_assessment"] = "No assessment provided"
-                
-            except json.JSONDecodeError as je:
-                logger.error(f"Failed to parse LLM response as JSON: {je}\nResponse: {llm_analysis}")
-                llm_result = {
-                    "anomalies": [],
-                    "overall_assessment": "Error parsing LLM analysis"
-                }
-            except Exception as e:
-                logger.error(f"Error in LLM analysis: {str(e)}")
-                llm_result = {
-                    "anomalies": [],
-                    "overall_assessment": f"Error in LLM analysis: {str(e)}"
-                }
+            # Get LLM analysis with better error handling
+            llm_response = self.llm.invoke(self.reasoning_prompt.format(**reasoning_input))
+            logger.info(f"Raw LLM response: {llm_response}")
+            
+            # Clean and parse the response
+            llm_result = self._clean_llm_response(llm_response)
             
             # Step 5: Combine All Analysis
             final_result = {
@@ -175,12 +207,12 @@ Provide JSON response:
             return final_result
         
         except Exception as e:
-            logger.error(f"Error in anomaly detection: {str(e)}")
-            return {
-                "error": str(e),
-                "status": "failed",
-                "timestamp": datetime.now().isoformat()
-            }
+                    logger.error(f"Error in anomaly detection: {str(e)}")
+                    return {
+                        "error": str(e),
+                        "status": "failed",
+                        "timestamp": datetime.now().isoformat()
+                    }
 
     def _calculate_confidence_score(
         self,
@@ -196,7 +228,16 @@ Provide JSON response:
         
         # LLM confidence
         llm_anomalies = llm_result.get("anomalies", [])
-        llm_confidence = min(len(llm_anomalies) * 0.15, 0.8)
+        if llm_anomalies:
+            # Average confidence from all anomalies
+            anomaly_confidences = [
+                float(anomaly.get("confidence", 0))
+                for anomaly in llm_anomalies
+            ]
+            llm_confidence = sum(anomaly_confidences) / len(anomaly_confidences)
+        else:
+            llm_confidence = 0.0
+        
         confidence_factors.append(llm_confidence)
         
         # Calculate weighted average
