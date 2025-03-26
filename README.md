@@ -18,10 +18,10 @@
 - This AI agent powered system solves that problem by using AI-powered anomaly detection and break resolution to make reconciliation faster, smarter, and fully automated. Instead of spending hours digging through spreadsheets, teams can identify issues and get AI-powered fix suggestions in real-time.
 
 ## 🎥 Demo
-🔗 [Live Demo](#) (if applicable)  
-📹 [Video Demo](#) (if applicable)  
-🖼️ Screenshots:
+<!-- 🔗 [Live Demo](#) (if applicable)   -->
+📹 [ReconcileX - Video Demo](/artifacts//demo/ReconcileX_demo.mp4)   
 
+🖼️ Screenshots:
 ![Dashboard](artifacts/demo/images/dashboard.png)
 
 ## 💡 Inspiration
@@ -40,19 +40,19 @@ To resolve the above mentioned painpoints and to improve efficiency, the industr
 ✅ **Interactive UI** - A dashboard for reconcilers to review anomalies, understand root causes, and apply fixes effortlessly and autonomously.
 
 ## 🛠️ How We Built It
-🚀 Frontend (User Interface):
+🚀 **Frontend (User Interface)**:
 - Streamlit & Gradio – A smooth, interactive UI where users can upload data, review breaks, and apply fixes.
 
-⚡ Backend (Processing Engine):
+⚡ **Backend (Processing Engine)**:
 - FastAPI – A fast and scalable API for handling anomaly detection requests and fix approvals.
 - LangChain + Llama/Mistral – An AI model that understands context and suggests meaningful fixes.
 
-🧠 AI Models for Anomaly Detection:
+🧠 **AI Models for Anomaly Detection**:
 - Pre-trained Autoencoder & LSTM – Detect unusual patterns and inconsistencies.
 - Isolation Forest – Flags outliers and potential fraud risks in reconciliation data.
 - LLM Summarization - Provides precise summaries of about the anomaly and the root cause.
 
-🔗 Data Processing & Cleansing:
+🔗 **Data Processing & Cleansing**:
 - OpenRefine – Cleans and formats key columns for better anomaly detection.
 
 ## 🚧 Challenges We Faced
