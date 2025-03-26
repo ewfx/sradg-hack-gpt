@@ -1,4 +1,4 @@
-# 🚀 Project Name
+# 🚀 ReconcileX - AI Agent powered Reconciliation System
 
 ## 📌 Table of Contents
 - [Introduction](#introduction)
@@ -92,7 +92,7 @@ To resolve the above mentioned painpoints and to improve efficiency, the industr
 - 🔹 Data Processing: OpenRefine
 <!-- - 🔹 Database: PostgreSQL / Firebase -->
 
-## 👥 Team
+## 👥 Team HackGPT
 - **Praveen Kumar R** - [GitHub](https://github.com/praveen-221) | [Website](https://praveenkr.vercel.app/)
 - **Kirthi Vignesh G** - [GitHub](#) | [LinkedIn](#)
 - **Shubham M Prabhu** - [GitHub](#) | [LinkedIn](#)
