@@ -48,7 +48,7 @@ def create_reconciliation_process():
         # Key columns selection
         key_columns_input = st.text_input(
             "Enter Key Columns (comma separated)",
-            value="Account,Transaction ID",
+            value="",
             help="Enter column names separated by commas"
         )
         key_columns = [col.strip() for col in key_columns_input.split(",") if col.strip()]
@@ -56,7 +56,7 @@ def create_reconciliation_process():
         # Derived columns selection
         derived_columns_input = st.text_input(
             "Enter Derived Columns (comma separated)", 
-            value="Balance",
+            value="",
             help="Enter column names separated by commas"
         )
         derived_columns = [col.strip() for col in derived_columns_input.split(",") if col.strip()]
@@ -64,7 +64,7 @@ def create_reconciliation_process():
         # Break categories selection
         break_categories_input = st.text_input(
             "Enter Break Categories (comma separated)",
-            value="AMOUNT_MISMATCH,DATE_MISMATCH",
+            value="",
             help="Enter categories separated by commas"
         )
         break_categories = [cat.strip() for cat in break_categories_input.split(",") if cat.strip()]
@@ -72,11 +72,11 @@ def create_reconciliation_process():
         # Source configurations
         col1, col2 = st.columns(2)
         with col1:
-            source1_name = st.text_input("Source 1 Name", "Bank Statement")
+            source1_name = st.text_input("Source 1 Name", "")
             source1_url = st.text_input("Source 1 URL/Path", "")
         
         with col2:
-            source2_name = st.text_input("Source 2 Name", "GL Entry")
+            source2_name = st.text_input("Source 2 Name", "")
             source2_url = st.text_input("Source 2 URL/Path", "")
         
         submit_button = st.form_submit_button("Create Process")
@@ -155,9 +155,6 @@ def approve_fix(record: dict, feedback: str, index: int):
 
 def show_analysis_results(result, index):
     """Display analysis results in a structured format"""
-    # Remove the detect anomaly button after results are shown
-    st.empty()  # Clear the previous button
-    
     # Create containers for different sections
     anomaly_container = st.container()
     fix_container = st.container()
@@ -299,6 +296,11 @@ def show_dashboard():
         try:
             df = pd.read_excel(uploaded_file) if uploaded_file.name.endswith(('xlsx', 'xls')) else pd.read_csv(uploaded_file)
             st.session_state.uploaded_data = df
+            
+            # Display the data table
+            st.subheader("Uploaded Data")
+            st.dataframe(df, use_container_width=True)
+            
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
             return
